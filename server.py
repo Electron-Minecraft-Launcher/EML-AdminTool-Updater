@@ -89,7 +89,8 @@ def update():
     subprocess.check_call(["docker", "compose", "-f", "/app/compose/docker-compose.prod.yml", "up", "-d"])
     return jsonify({"success": True, "message": "Update applied"})
   except subprocess.CalledProcessError as e:
-    return jsonify({"success": False, "error": str(e)}), 500
+    print(f"❌ Error during update: {e}")
+    return jsonify({"success": False, "error": "See logs"}), 500
 
 
 if __name__ == "__main__":
