@@ -8,8 +8,8 @@ COPY requirements.txt /app/requirements.txt
 
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY updater.py /app/updater.py
+COPY server.py /app/server.py
 
 EXPOSE 4000
 
-CMD ["python", "updater.py"]
+CMD ["python", "server.py"]
