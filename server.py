@@ -92,7 +92,3 @@ def update():
     print(f"❌ Error during update: {e}")
     return jsonify({"success": False, "error": "See logs"}), 500
 
-
-if __name__ == "__main__":
-  print(f"🚀 Updater started ({ENV} mode).")
-  app.run(host="0.0.0.0", port=4000)
