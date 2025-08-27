@@ -1,6 +1,6 @@
 FROM python:3.13.7-alpine
 
-RUN apk add --no-cache ca-certificates docker-cli
+RUN apk add --no-cache ca-certificates docker-cli docker-cli-compose
 
 WORKDIR /app
 

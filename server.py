@@ -14,7 +14,7 @@ else:
   print(f"No .env file found at {env_file}. Exiting.")
   sys.exit(0)
 
-IMAGE = "ghcr.io/electron-minecraft-launcher/eml-admintool:latest"
+IMAGE = "ghcr.io/electron-minecraft-launcher/eml-admintool"
 ENV = os.getenv("ENVIRONMENT", "production")
 TOKEN = os.getenv("UPDATER_HTTP_API_TOKEN")
 
@@ -83,8 +83,8 @@ def update():
           return jsonify({"success": False, "error": "Failed to download compose"}), 500
 
   try:
-    print(f"Pull {IMAGE}...")
-    subprocess.check_call(["docker", "pull", IMAGE])
+    print(f"Pull {IMAGE}:{release_info['tag_name']}...")
+    subprocess.check_call(["docker", "pull", f"{IMAGE}:{release_info['tag_name']}"])
     print("🔄 Restarting the web service...")
     subprocess.check_call(["docker", "compose", "-f", "/app/compose/docker-compose.prod.yml", "up", "-d"])
     return jsonify({"success": True, "message": "Update applied"})
@@ -92,3 +92,4 @@ def update():
     print(f"❌ Error during update: {e}")
     return jsonify({"success": False, "error": "See logs"}), 500
 
+# async function
