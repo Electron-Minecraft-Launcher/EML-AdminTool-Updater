@@ -1,6 +1,6 @@
-FROM python:3.13.7-slim
+FROM python:3.13.7-alpine
 
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache ca-certificates docker-cli
 
 WORKDIR /app
 

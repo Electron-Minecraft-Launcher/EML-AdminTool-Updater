@@ -21,7 +21,7 @@ TOKEN = os.getenv("UPDATER_HTTP_API_TOKEN")
 app = Flask(__name__)
 
 def get_latest_release():
-  url = "https://api.github.com/repos/EML-AdminTool-v2/releases/latest"
+  url = "https://api.github.com/repos/Electron-Minecraft-Launcher/EML-AdminTool-v2/releases/latest"
   try:
     response = requests.get(url, timeout=10)
     if response.status_code == 200:
