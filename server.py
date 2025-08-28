@@ -1,7 +1,8 @@
 import os
 import sys
-import subprocess
 import requests
+import asyncio
+import threading
 from pathlib import Path
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify
@@ -10,6 +11,7 @@ env_file = Path("/app/env/.env")
 if env_file.exists():
   print(f"🔧 Sourcing {env_file}...")
   load_dotenv(env_file)
+  print("🔧 Done.")
 else:
   print(f"No .env file found at {env_file}. Exiting.")
   sys.exit(0)
@@ -80,16 +82,37 @@ def update():
   if release_info["compose_url"]:
       compose_ok = update_compose_file(release_info["compose_url"], "/app/compose/docker-compose.prod.yml")
       if not compose_ok:
-          return jsonify({"success": False, "error": "Failed to download compose"}), 500
+          return jsonify({"success": False, "error": "Failed to download compose file"}), 500
 
+  threading.Thread(target=lambda: asyncio.run(download_update(release_info)), daemon=True).start()
+
+  return jsonify({"success": True, "message": "Updating..."})
+
+async def run_cmd(*args):
+    proc = await asyncio.create_subprocess_exec(
+        *args,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE
+    )
+    stdout, stderr = await proc.communicate()
+    return proc.returncode, stdout.decode(), stderr.decode()
+
+async def download_update(release_info):
   try:
-    print(f"Pull {IMAGE}:{release_info['tag_name']}...")
-    subprocess.check_call(["docker", "pull", f"{IMAGE}:{release_info['tag_name']}"])
-    print("🔄 Restarting the web service...")
-    subprocess.check_call(["docker", "compose", "-f", "/app/compose/docker-compose.prod.yml", "up", "-d"])
-    return jsonify({"success": True, "message": "Update applied"})
-  except subprocess.CalledProcessError as e:
-    print(f"❌ Error during update: {e}")
-    return jsonify({"success": False, "error": "See logs"}), 500
+    print(f"📥 Pull {IMAGE}:{release_info['tag_name']}...")
+    code, out, err = await run_cmd("docker", "pull", f"{IMAGE}:{release_info['tag_name']}")
+    if code != 0:
+      print(f"❌ Docker pull failed:\n{err}")
+      return
+    
+    print(out)
 
-# async function
+    print("🔄 Restarting the web service...")
+    code, out, err = await run_cmd("docker", "compose", "-f", "/app/compose/docker-compose.prod.yml", "web", "up", "-d")
+    if code != 0:
+      print(f"❌ Docker compose up failed:\n{err}")
+      return
+    print(out)
+  except Exception as e:
+    print(f"❌ Error during update: {e}")
+    return
