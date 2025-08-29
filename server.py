@@ -108,7 +108,7 @@ async def download_update(release_info):
     print(out)
 
     print("🔄 Restarting the web service...")
-    code, out, err = await run_cmd("docker", "compose", "-f", "/app/compose/docker-compose.prod.yml", "web", "up", "-d")
+    code, out, err = await run_cmd("docker", "compose", "-f", "/app/compose/docker-compose.prod.yml", "up", "web", "-d")
     if code != 0:
       print(f"❌ Docker compose up failed:\n{err}")
       return
