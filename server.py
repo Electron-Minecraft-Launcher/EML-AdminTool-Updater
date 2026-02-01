@@ -23,7 +23,7 @@ TOKEN = os.getenv("UPDATER_HTTP_API_TOKEN")
 app = Flask(__name__)
 
 def get_latest_release():
-  url = "https://api.github.com/repos/Electron-Minecraft-Launcher/EML-AdminTool-v2/releases/latest"
+  url = "https://api.github.com/repos/Electron-Minecraft-Launcher/EML-AdminTool/releases/latest"
   try:
     response = requests.get(url, timeout=10)
     if response.status_code == 200:
@@ -70,6 +70,8 @@ def update():
   if auth != f"Bearer {TOKEN}":
     print("Unauthorized access attempt")
     return jsonify({"success": False, "error": "Unauthorized"}), 401
+
+  print("🔄 Update requested...")
 
   release_info = get_latest_release()
   if not release_info:
