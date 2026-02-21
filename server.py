@@ -1,3 +1,10 @@
+"""
+EML AdminTool Updater server
+"""
+__license__ = "MIT"
+__author__ = "GoldFrite"
+__version__ = "1.1.0"
+
 import os
 import sys
 import requests
@@ -19,13 +26,14 @@ else:
 IMAGE = "ghcr.io/electron-minecraft-launcher/eml-admintool"
 ENV = os.getenv("ENVIRONMENT", "production")
 TOKEN = os.getenv("UPDATER_HTTP_API_TOKEN")
+API_URL = os.getenv(
+    "UPDATER_API_URL", "https://api.github.com/repos/Electron-Minecraft-Launcher/EML-AdminTool/releases/latest")
 
 app = Flask(__name__)
 
 def get_latest_release():
-  url = "https://api.github.com/repos/Electron-Minecraft-Launcher/EML-AdminTool/releases/latest"
   try:
-    response = requests.get(url, timeout=10)
+    response = requests.get(API_URL, timeout=10)
     if response.status_code == 200:
       data = response.json()
     else:
@@ -61,8 +69,37 @@ def update_compose_file(compose_url, dest_path):
     print(f"✅ New docker-compose.prod.yml saved to {dest_path}")
     return True
   except Exception as e:
-    print(f"❌ Unable to download docker-compose: {e}")
+    print(f"❌ Unable to download docker-compose file: {e}")
     return False
+
+async def run_cmd(*args):
+  proc = await asyncio.create_subprocess_exec(
+      *args,
+      stdout=asyncio.subprocess.PIPE,
+      stderr=asyncio.subprocess.PIPE
+  )
+  stdout, stderr = await proc.communicate()
+  return proc.returncode, stdout.decode(), stderr.decode()
+
+async def download_update():
+  try:
+    print("📥 Pulling images from the new compose file...")
+    code, out, err = await run_cmd("docker", "compose", "-f", "/app/compose/docker-compose.prod.yml", "pull")
+    if code != 0:
+      print(f"❌ Docker pull failed:\n{err}")
+      return
+
+    print(out)
+
+    print("🔄 Recreating and restarting out-of-date services...")
+    code, out, err = await run_cmd("docker", "compose", "-f", "/app/compose/docker-compose.prod.yml", "up", "-d", "--remove-orphans")
+    if code != 0:
+      print(f"❌ Docker compose up failed:\n{err}")
+      return
+    print(out)
+  except Exception as e:
+    print(f"❌ Error during update: {e}")
+    return
 
 @app.route("/update", methods=["POST"])
 def update():
@@ -82,39 +119,29 @@ def update():
     return jsonify({"success": True, "message": f"Mock update to {release_info['tag_name']} successful"})
 
   if release_info["compose_url"]:
-      compose_ok = update_compose_file(release_info["compose_url"], "/app/compose/docker-compose.prod.yml")
-      if not compose_ok:
-          return jsonify({"success": False, "error": "Failed to download compose file"}), 500
+    compose_ok = update_compose_file(release_info["compose_url"], "/app/compose/docker-compose.prod.yml")
+    if not compose_ok:
+      return jsonify({"success": False, "error": "Failed to download compose file"}), 500
 
-  threading.Thread(target=lambda: asyncio.run(download_update(release_info)), daemon=True).start()
+  threading.Thread(target=lambda: asyncio.run(download_update()), daemon=True).start()
 
   return jsonify({"success": True, "message": "Updating..."})
 
-async def run_cmd(*args):
-    proc = await asyncio.create_subprocess_exec(
-        *args,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE
-    )
-    stdout, stderr = await proc.communicate()
-    return proc.returncode, stdout.decode(), stderr.decode()
+@app.route("/reload", methods=["POST"])
+def reload():
+  auth_header = request.headers.get("Authorization")
+  if not auth_header or not auth_header.startswith("Bearer "):
+    return jsonify({"success": False, "error": "Missing token"}), 401
 
-async def download_update(release_info):
-  try:
-    print(f"📥 Pull {IMAGE}:{release_info['tag_name']}...")
-    code, out, err = await run_cmd("docker", "pull", f"{IMAGE}:{release_info['tag_name']}")
-    if code != 0:
-      print(f"❌ Docker pull failed:\n{err}")
-      return
-    
-    print(out)
+  print("🔄 Reloading environment variables from .env...")
+  load_dotenv(env_file, override=True)
 
-    print("🔄 Restarting the web service...")
-    code, out, err = await run_cmd("docker", "compose", "-f", "/app/compose/docker-compose.prod.yml", "up", "web", "-d")
-    if code != 0:
-      print(f"❌ Docker compose up failed:\n{err}")
-      return
-    print(out)
-  except Exception as e:
-    print(f"❌ Error during update: {e}")
-    return
+  global TOKEN
+  TOKEN = os.getenv("UPDATER_HTTP_API_TOKEN")
+
+  if auth_header == f"Bearer {TOKEN}":
+    print("✅ Token updated successfully.")
+    return jsonify({"success": True, "message": "Updater reloaded successfully"})
+  else:
+    print("❌ Token mismatch after reload.")
+    return jsonify({"success": False, "error": "Token mismatch"}), 403
