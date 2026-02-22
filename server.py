@@ -116,7 +116,7 @@ async def download_update():
         "docker", "run", "--rm", "-d",
         "--name", f"{project_name}-agent",
         "-v", "/var/run/docker.sock:/var/run/docker.sock",
-        "-v", f"{host_dir}:agent_workdir",
+        "-v", f"{host_dir}:/agent_workdir",
         "-w", "/agent_workdir",
         image_name,
         "sh", "-c",
