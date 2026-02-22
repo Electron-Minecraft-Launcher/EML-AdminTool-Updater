@@ -86,24 +86,22 @@ async def run_cmd(*args):
 async def download_update():
   try:
     container_id = socket.gethostname()
-
+        
     code, out, err = await run_cmd("docker", "inspect", container_id)
     if code != 0:
-      print(f"❌ Failed to inspect self:\n{err}")
+      print("Failed to inspect self")
       return
-
+    
     inspect_data = json.loads(out)[0]
-    project_name = inspect_data["Config"]["Labels"].get("com.docker.compose.project", "eml-admintool")
+    labels = inspect_data["Config"]["Labels"]
+    
+    project_name = labels.get("com.docker.compose.project", "eml-admintool")
+    host_dir = labels.get("com.docker.compose.project.working_dir")
     image_name = inspect_data["Config"]["Image"]
-
-    host_compose_path = next((m["Source"] for m in inspect_data["Mounts"] if m["Destination"]
-                             == "/app/compose/docker-compose.prod.yml"), None)
-
-    if not host_compose_path:
-      print("Failed to determine host path.")
+    
+    if not host_dir:
+      print("Error: Could not determine host working directory from labels.")
       return
-
-    host_dir = os.path.dirname(host_compose_path)
 
     print("📥 Pulling images from the new compose file...")
     code, out, err = await run_cmd("docker", "compose", "-p", project_name, "-f", "/app/compose/docker-compose.prod.yml", "pull")
@@ -118,8 +116,8 @@ async def download_update():
         "docker", "run", "--rm", "-d",
         "--name", f"{project_name}-agent",
         "-v", "/var/run/docker.sock:/var/run/docker.sock",
-        "-v", f"{host_dir}:{host_dir}",
-        "-w", host_dir,
+        "-v", f"{host_dir}:agent_workdir",
+        "-w", "/agent_workdir",
         image_name,
         "sh", "-c",
         f"sleep 3 && docker compose -p {project_name} -f docker-compose.prod.yml up -d --remove-orphans"
