@@ -12,6 +12,7 @@ import asyncio
 import threading
 import json
 import socket
+import re
 from pathlib import Path
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify
@@ -86,22 +87,28 @@ async def run_cmd(*args):
 async def download_update():
   try:
     container_id = socket.gethostname()
-        
+
     code, out, err = await run_cmd("docker", "inspect", container_id)
     if code != 0:
       print("Failed to inspect self")
       return
-    
+
     inspect_data = json.loads(out)[0]
     labels = inspect_data["Config"]["Labels"]
-    
+
     project_name = labels.get("com.docker.compose.project", "eml-admintool")
     host_dir = labels.get("com.docker.compose.project.working_dir")
     image_name = inspect_data["Config"]["Image"]
-    
+
     if not host_dir:
       print("Error: Could not determine host working directory from labels.")
       return
+
+    agent_workdir = host_dir
+    if re.match(r'^[a-zA-Z]:\\', host_dir):
+      drive = host_dir[0].lower()
+      path_part = host_dir[3:].replace('\\', '/')
+      agent_workdir = f"/host_mnt/{drive}/{path_part}"
 
     print("📥 Pulling images from the new compose file...")
     code, out, err = await run_cmd("docker", "compose", "-p", project_name, "-f", "/app/compose/docker-compose.prod.yml", "pull")
@@ -116,8 +123,8 @@ async def download_update():
         "docker", "run", "--rm", "-d",
         "--name", f"{project_name}-agent",
         "-v", "/var/run/docker.sock:/var/run/docker.sock",
-        "-v", f"{host_dir}:/agent_workdir",
-        "-w", "/agent_workdir",
+        "-v", f"{host_dir}:{agent_workdir}",
+        "-w", agent_workdir,
         image_name,
         "sh", "-c",
         f"sleep 3 && docker compose -p {project_name} -f docker-compose.prod.yml up -d --remove-orphans"
