@@ -10,6 +10,8 @@ import sys
 import requests
 import asyncio
 import threading
+import json
+import socket
 from pathlib import Path
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify
@@ -83,23 +85,54 @@ async def run_cmd(*args):
 
 async def download_update():
   try:
+    container_id = socket.gethostname()
+
+    code, out, err = await run_cmd("docker", "inspect", container_id)
+    if code != 0:
+      print(f"❌ Failed to inspect self:\n{err}")
+      return
+
+    inspect_data = json.loads(out)[0]
+    project_name = inspect_data["Config"]["Labels"].get("com.docker.compose.project", "eml-admintool")
+    image_name = inspect_data["Config"]["Image"]
+
+    host_compose_path = next((m["Source"] for m in inspect_data["Mounts"] if m["Destination"]
+                             == "/app/compose/docker-compose.prod.yml"), None)
+
+    if not host_compose_path:
+      print("Failed to determine host path.")
+      return
+
+    host_dir = os.path.dirname(host_compose_path)
+
     print("📥 Pulling images from the new compose file...")
-    code, out, err = await run_cmd("docker", "compose", "-f", "/app/compose/docker-compose.prod.yml", "pull")
+    code, out, err = await run_cmd("docker", "compose", "-p", project_name, "-f", "/app/compose/docker-compose.prod.yml", "pull")
     if code != 0:
       print(f"❌ Docker pull failed:\n{err}")
       return
 
     print(out)
 
-    print("🔄 Recreating and restarting out-of-date services...")
-    code, out, err = await run_cmd("docker", "compose", "-f", "/app/compose/docker-compose.prod.yml", "up", "-d", "--remove-orphans")
-    if code != 0:
-      print(f"❌ Docker compose up failed:\n{err}")
-      return
-    print(out)
+    print("🏗️ Launching ephemeral update agent...")
+    update_cmd = [
+        "docker", "run", "--rm", "-d",
+        "--name", f"{project_name}-agent",
+        "-v", "/var/run/docker.sock:/var/run/docker.sock",
+        "-v", f"{host_dir}:{host_dir}",
+        "-w", host_dir,
+        image_name,
+        "sh", "-c",
+        f"sleep 3 && docker compose -p {project_name} -f docker-compose.prod.yml up -d --remove-orphans"
+    ]
+
+    code, out, err = await run_cmd(*update_cmd)
+    if code == 0:
+      print("🔄️ Update delegated to ephemeral agent...")
+    else:
+      print(f"Failed to launch agent:\n{err}")
+
   except Exception as e:
-    print(f"❌ Error during update: {e}")
-    return
+    print(f"Error during update: {e}")
 
 @app.route("/update", methods=["POST"])
 def update():
